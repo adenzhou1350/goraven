@@ -98,6 +98,7 @@ type goravenTransport struct {
 }
 
 func (t *goravenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
 	req.Header.Set("HTTP-Referer", "https://goraven.dev")
 	req.Header.Set("X-Title", "GoRaven")
 	req.Header.Set("X-OpenRouter-Title", "GoRaven")

@@ -3,11 +3,73 @@ package util
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"testing"
 )
 
 type captureTransport struct {
 	req *http.Request
+}
+
+func TestGoravenTransport_PreservesRequestHeaders(t *testing.T) {
+	capture := &captureTransport{}
+	transport := &goravenTransport{Transport: capture}
+	ctx := WithConversationHeader(context.Background(), "X-Opencode-Session", "session")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Title", "caller title")
+	req.Header["X-Custom"] = []string{"first", "second"}
+	before := req.Header.Clone()
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if !reflect.DeepEqual(req.Header, before) {
+		t.Fatalf("caller headers changed: got %v, want %v", req.Header, before)
+	}
+	if capture.req.Context() != ctx || capture.req.Body != req.Body {
+		t.Fatal("context and body must be preserved")
+	}
+	for key, want := range map[string]string{
+		"HTTP-Referer":       "https://goraven.dev",
+		"X-Title":            "GoRaven",
+		"X-OpenRouter-Title": "GoRaven",
+		"X-Opencode-Session": "session",
+	} {
+		if got := capture.req.Header.Get(key); got != want {
+			t.Fatalf("outbound %s = %q, want %q", key, got, want)
+		}
+	}
+	capture.req.Header["X-Custom"][0] = "changed"
+	if !reflect.DeepEqual(req.Header, before) {
+		t.Fatal("outbound header values still alias the caller's values")
+	}
+}
+
+func TestGoravenTransport_SequentialContextOverride(t *testing.T) {
+	capture := &captureTransport{}
+	transport := &goravenTransport{Transport: capture}
+	req, err := http.NewRequest(http.MethodGet, "https://api.example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range []struct{ key, value string }{
+		{"X-Opencode-Session", "first"},
+		{"", ""},
+	} {
+		ctx := WithConversationHeader(req.Context(), pair.key, pair.value)
+		resp, err := transport.RoundTrip(req.WithContext(ctx))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if got := capture.req.Header.Get("X-Opencode-Session"); got != pair.value {
+			t.Fatalf("outbound conversation header = %q, want %q", got, pair.value)
+		}
+	}
 }
 
 func (c *captureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
