@@ -2,6 +2,7 @@ package util
 
 import (
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 )
@@ -25,15 +26,17 @@ func EncodePath(s string) string {
 // IsLocalOrIPHost 判断 Host（含可选端口）是否为 IP 地址或 localhost，
 // 这类地址不适合作为社交卡片上的对外 URL。
 func IsLocalOrIPHost(host string) bool {
-	h := host
-	if i := strings.LastIndex(h, ":"); i >= 0 {
-		h = h[:i]
+	h := strings.TrimSpace(host)
+	if hostname, _, err := net.SplitHostPort(h); err == nil {
+		h = hostname
+	} else if strings.HasPrefix(h, "[") && strings.HasSuffix(h, "]") {
+		h = h[1 : len(h)-1]
 	}
-	h = strings.TrimSpace(h)
 	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
 		return true
 	}
-	return net.ParseIP(h) != nil
+	_, err := netip.ParseAddr(h)
+	return err == nil
 }
 
 // IsLocalOrIPURL 判断形如 "scheme://host[:port]" 的配置域名是否为本地/IP 地址。
