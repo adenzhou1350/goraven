@@ -8,13 +8,7 @@ import (
 
 // EncodeQuery URL 编码查询参数
 func EncodeQuery(s string) string {
-	return strings.ReplaceAll(
-		strings.ReplaceAll(
-			strings.ReplaceAll(s, " ", "%20"),
-			"/", "%2F",
-		),
-		"?", "%3F",
-	)
+	return url.QueryEscape(s)
 }
 
 // EncodePath URL 编码路径段
